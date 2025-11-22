@@ -8,12 +8,17 @@ from pypdf import PdfReader
 from fastapi import UploadFile
 import easyocr
 
-# ---------------- EasyOCR Init ----------------
-print("[INFO] Initializing EasyOCR reader...")
-reader = easyocr.Reader(['en'])
+_reader = None   # global but lazy loaded ✅
 
 
-# ---------------- Core Router ----------------
+def get_reader():
+    global _reader
+    if _reader is None:
+        print("[INFO] Lazy-loading EasyOCR reader...")
+        _reader = easyocr.Reader(['en'], gpu=False)
+    return _reader
+
+
 def extract_text_from_file(file: UploadFile):
     filename = file.filename.lower()
 
@@ -45,10 +50,11 @@ def extract_text_from_pdf(file_stream):
 
 def extract_text_with_easyocr(file_stream):
     try:
+        reader = get_reader()   # ✅ lazy call
         doc = fitz.open(stream=file_stream.read(), filetype="pdf")
         text = ""
         for page in doc:
-            pix = page.get_pixmap(dpi=300)
+            pix = page.get_pixmap(dpi=200)
             img = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
             text += " ".join(
                 [txt for (_, txt, _) in reader.readtext(np.array(img))]
@@ -56,18 +62,19 @@ def extract_text_with_easyocr(file_stream):
         return text
     except Exception:
         traceback.print_exc()
-        return None
+        return ""
 
 
 # ---------------- IMAGE OCR ----------------
 def extract_text_from_image(file_stream):
     try:
+        reader = get_reader()  # ✅ lazy call
         image = Image.open(file_stream).convert("RGB")
         text = " ".join([t[1] for t in reader.readtext(np.array(image))])
         return text
     except Exception:
         traceback.print_exc()
-        return None
+        return ""
 
 
 # ---------------- DOCX ----------------
@@ -76,7 +83,7 @@ def extract_text_from_docx(file_stream):
         return "\n".join(p.text for p in Document(file_stream).paragraphs)
     except Exception:
         traceback.print_exc()
-        return None
+        return ""
 
 
 # ---------------- TXT ----------------
@@ -85,4 +92,4 @@ def extract_text_from_txt(file_stream):
         return file_stream.read().decode("utf-8")
     except Exception:
         traceback.print_exc()
-        return None
+        return ""
