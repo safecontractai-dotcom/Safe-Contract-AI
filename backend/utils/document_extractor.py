@@ -1,30 +1,14 @@
 import traceback
 import io
-import numpy as np
-import fitz
+import os
+import re
+import requests
 from PIL import Image
 from docx import Document
 from pypdf import PdfReader
 from fastapi import UploadFile
-import os
-import re
-import hashlib
 
-# ================= EASYOCR LAZY LOADER =================
-
-_reader = None
-
-def get_reader():
-    global _reader
-    if _reader is None:
-        print("[INFO] Lazy-loading EasyOCR reader (CPU mode)...")
-        import easyocr
-        _reader = easyocr.Reader(
-            ['en'],
-            gpu=False,                     # ✅ No GPU = low memory
-            model_storage_directory="/tmp"
-        )
-    return _reader
+OCR_SPACE_API_KEY = os.getenv("OCR_SPACE_API_KEY")  # ✅ Add this to Render env
 
 
 # ================= MAIN ROUTER =================
@@ -34,12 +18,16 @@ def extract_text_from_file(file: UploadFile):
 
     if filename.endswith(".pdf"):
         return extract_text_from_pdf(file.file)
+
     elif filename.endswith((".png", ".jpg", ".jpeg", ".webp")):
-        return extract_text_from_image(file.file)
+        return extract_text_from_image_ocr_space(file.file)
+
     elif filename.endswith(".docx"):
         return extract_text_from_docx(file.file)
+
     elif filename.endswith(".txt"):
         return extract_text_from_txt(file.file)
+
     else:
         raise Exception("Unsupported file type")
 
@@ -54,54 +42,75 @@ def extract_text_from_pdf(file_stream):
         if text.strip():
             return clean_text(text)
 
-        # If PDF is scanned -> OCR fallback
+        # If scanned PDF -> OCR.Space fallback
         file_stream.seek(0)
-        return extract_pdf_with_easyocr(file_stream)
+        return extract_pdf_with_ocr_space(file_stream)
 
     except Exception:
         file_stream.seek(0)
-        return extract_pdf_with_easyocr(file_stream)
+        return extract_pdf_with_ocr_space(file_stream)
 
 
-def extract_pdf_with_easyocr(file_stream):
+def extract_pdf_with_ocr_space(file_stream):
     try:
-        reader = get_reader()
-        doc = fitz.open(stream=file_stream.read(), filetype="pdf")
-        text = ""
-
-        for page in doc:
-            pix = page.get_pixmap(dpi=200)
-            img = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
-
-            text += " ".join([
-                t[1] for t in reader.readtext(np.array(img))
-            ])
-
-        return clean_text(text)
-
+        return send_to_ocr_space(file_stream, is_pdf=True)
     except Exception:
         traceback.print_exc()
         return ""
 
 
-# ================= IMAGE OCR =================
+# ================= IMAGE OCR (OCR.Space) =================
 
-def extract_text_from_image(file_stream):
+def extract_text_from_image_ocr_space(file_stream):
     try:
-        reader = get_reader()
-        image = Image.open(file_stream).convert("RGB")
-
-        results = reader.readtext(np.array(image))
-        text = " ".join([r[1] for r in results])
-
-        return clean_text(text)
-
+        return send_to_ocr_space(file_stream)
     except Exception:
         traceback.print_exc()
         return ""
 
 
-# ================= DOCX =================
+# ================= OCR SPACE CORE =================
+
+def send_to_ocr_space(file_stream, is_pdf=False):
+    try:
+        url = "https://api.ocr.space/parse/image"
+
+        payload = {
+            "isOverlayRequired": False,
+            "OCREngine": 2,
+            "scale": True,
+            "isCreateSearchablePdf": False,
+            "language": "eng"
+        }
+
+        files = {
+            "file": file_stream
+        }
+
+        headers = {
+            "apikey": OCR_SPACE_API_KEY
+        }
+
+        response = requests.post(url, data=payload, files=files, headers=headers, timeout=60)
+        result = response.json()
+
+        if result.get("IsErroredOnProcessing"):
+            print("OCR SPACE ERROR:", result.get("ErrorMessage"))
+            return ""
+
+        parsed = result.get("ParsedResults")
+        if not parsed:
+            return ""
+
+        extracted_text = parsed[0].get("ParsedText", "")
+        return clean_text(extracted_text)
+
+    except Exception as e:
+        print("OCR.Space Exception:", e)
+        return ""
+
+
+# ================= DOCX HANDLER =================
 
 def extract_text_from_docx(file_stream):
     try:
@@ -111,7 +120,7 @@ def extract_text_from_docx(file_stream):
         return ""
 
 
-# ================= TXT =================
+# ================= TXT HANDLER =================
 
 def extract_text_from_txt(file_stream):
     try:
@@ -121,7 +130,7 @@ def extract_text_from_txt(file_stream):
         return ""
 
 
-# ================= CLEANING =================
+# ================= CLEANER =================
 
 def clean_text(text):
     if not text:
@@ -130,4 +139,5 @@ def clean_text(text):
     text = re.sub(r"\n\s*\n", "\n\n", text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"[-_*]{3,}", " ", text)
+
     return text.strip()
