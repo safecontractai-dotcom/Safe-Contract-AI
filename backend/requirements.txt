@@ -2,12 +2,15 @@ fastapi
 uvicorn
 python-dotenv
 python-multipart
+pdfplumber
+python-docx
 google-generativeai
+pydantic
 razorpay
-numpy
 pymupdf
 pillow
 pypdf
 easyocr
-pydantic
+numpy
 opencv-python-headless
+requests
