@@ -7,3 +7,4 @@ python-docx
 google-generativeai
 pydantic
 PyPDF2
+numpy
