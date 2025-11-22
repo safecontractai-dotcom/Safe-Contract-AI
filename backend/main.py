@@ -1,12 +1,10 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import shutil
 import os
 from dotenv import load_dotenv
 
 from utils.document_extractor import extract_text_from_file
-
 from utils.llm_analysis import analyze_contract
 from utils.risk_engine import detect_risks
 
@@ -29,7 +27,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 @app.get("/")
 def root():
@@ -62,6 +59,7 @@ async def analyze(file: UploadFile = File(...)):
         print("BACKEND ERROR:", e)
         return {"error": "Internal processing error"}
 
+
 # ================= AI ASSISTANT =================
 
 class AssistantRequest(BaseModel):
@@ -89,6 +87,9 @@ Answer clearly and legally.
     return {"answer": response.text}
 
 
+# ✅ Render-compatible startup
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
