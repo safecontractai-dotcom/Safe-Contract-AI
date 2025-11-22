@@ -33,14 +33,12 @@ def root():
     return {"message": "✅ SafeContract AI Backend Running"}
 
 
-# ================= CONTRACT ANALYSIS =================
-
 @app.post("/analyze")
 async def analyze(file: UploadFile = File(...)):
     try:
         text = extract_text_from_file(file)
 
-        if not text or not text.strip():
+        if not text.strip():
             return {"error": "Empty or unreadable contract text."}
 
         rule_risks = [r["message"] for r in detect_risks(text)]
@@ -59,8 +57,6 @@ async def analyze(file: UploadFile = File(...)):
         print("BACKEND ERROR:", e)
         return {"error": "Internal processing error"}
 
-
-# ================= AI ASSISTANT =================
 
 class AssistantRequest(BaseModel):
     question: str
