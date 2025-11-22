@@ -2,9 +2,17 @@ import pdfplumber
 import docx
 import re
 import os
+import hashlib
+from PIL import Image
+
+
+# Cache folder for OCR results
+OCR_CACHE_DIR = "ocr_cache"
+os.makedirs(OCR_CACHE_DIR, exist_ok=True)
+
 
 def extract_text(file_path):
-    """Extract text from PDF, DOCX, or TXT"""
+    """Extract text from PDF, DOCX, TXT or IMAGE using optimized OCR"""
 
     ext = file_path.split(".")[-1].lower()
 
@@ -14,16 +22,18 @@ def extract_text(file_path):
     elif ext == "docx":
         return extract_from_docx(file_path)
 
+    elif ext in ["jpg", "jpeg", "png", "webp"]:
+        return extract_from_image_ocr(file_path)
+
     elif ext == "txt":
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             return clean_text(f.read())
 
-    else:
-        return None
+    return ""
 
 
 # -------------------------------
-# PDF Extraction
+# PDF EXTRACTION
 # -------------------------------
 def extract_from_pdf(path):
     try:
@@ -39,7 +49,7 @@ def extract_from_pdf(path):
 
 
 # -------------------------------
-# DOCX Extraction
+# DOCX EXTRACTION
 # -------------------------------
 def extract_from_docx(path):
     try:
@@ -52,53 +62,78 @@ def extract_from_docx(path):
 
 
 # -------------------------------
-# CLEANING
+# ✅ ADVANCED IMAGE OCR SYSTEM
+# -------------------------------
+def extract_from_image_ocr(path):
+    try:
+        # Generate unique hash for caching
+        file_hash = hashlib.md5(path.encode()).hexdigest()
+        cache_file = os.path.join(OCR_CACHE_DIR, file_hash + ".txt")
+
+        # ✅ If already OCR'd, read cache
+        if os.path.exists(cache_file):
+            with open(cache_file, "r", encoding="utf-8") as f:
+                return clean_text(f.read())
+
+        # ✅ Preprocess image for OCR accuracy
+        image = Image.open(path).convert("L")  # grayscale
+        image = image.resize((image.width * 2, image.height * 2))
+
+        temp_path = path + "_processed.png"
+        image.save(temp_path)
+
+        # ✅ Lazy import OCR (prevents RAM crash)
+        import easyocr
+
+        reader = easyocr.Reader(
+            ['en'],
+            gpu=False,
+            model_storage_directory="/tmp",
+            download_enabled=True
+        )
+
+        result = reader.readtext(temp_path)
+        extracted_text = " ".join([r[1] for r in result])
+
+        final_text = clean_text(extracted_text)
+
+        # ✅ Save cache
+        with open(cache_file, "w", encoding="utf-8") as f:
+            f.write(final_text)
+
+        return final_text
+
+    except Exception as e:
+        print("OCR Error:", e)
+        return ""
+
+
+# -------------------------------
+# CLEAN TEXT
 # -------------------------------
 def clean_text(text):
-    """Normalize and clean extracted text"""
-
     if not text:
         return ""
 
-    # Remove multiple line breaks
     text = re.sub(r"\n\s*\n", "\n\n", text)
-
-    # Remove extra spaces
     text = re.sub(r"[ \t]+", " ", text)
-
-    # Remove repeating symbols (----, ****, etc.)
     text = re.sub(r"[-_*]{3,}", " ", text)
-
-    # Strip whitespace
-    text = text.strip()
-
-    return text
+    return text.strip()
 
 
 # -------------------------------
-# CLAUSE SPLITTING
+# CLAUSE SPLITTER
 # -------------------------------
 def split_into_clauses(text):
-    """
-    Split text into contract clauses based on patterns:
-    - numbered clauses "1.", "2.1", "3.2.1"
-    - section titles
-    - typical contract separators
-    """
-
     if not text:
         return []
 
-    # Split on common clause patterns
     clauses = re.split(
-        r"\n(?=\d+\.\s)|"          # 1. Clause
-        r"\n(?=\d+\.\d+\s)|"        # 2.1 Clause
-        r"\n(?=[A-Z][a-z]+\s?:)|"   # Titles like "Confidentiality:"
-        r"\n(?=[A-Z ]{3,}\n)",      # FULL CAPS HEADINGS
+        r"\n(?=\d+\.\s)|"
+        r"\n(?=\d+\.\d+\s)|"
+        r"\n(?=[A-Z][a-z]+\s?:)|"
+        r"\n(?=[A-Z ]{3,}\n)",
         text
     )
 
-    # Final cleanup
-    cleaned_clauses = [c.strip() for c in clauses if len(c.strip()) > 20]
-
-    return cleaned_clauses
+    return [c.strip() for c in clauses if len(c.strip()) > 20]
