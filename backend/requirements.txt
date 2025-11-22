@@ -5,3 +5,5 @@ python-multipart
 pdfplumber
 python-docx
 google-generativeai
+pydantic
+PyPDF2
