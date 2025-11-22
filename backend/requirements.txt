@@ -1,3 +1,4 @@
+
 fastapi
 uvicorn
 python-dotenv
@@ -5,6 +6,11 @@ python-multipart
 pdfplumber
 python-docx
 google-generativeai
-pydantic
-PyPDF2
+flask
+razorpay
 numpy
+pymupdf
+pillow
+pypdf
+easyocr
+pydantic
