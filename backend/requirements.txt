@@ -3,11 +3,12 @@ uvicorn
 python-dotenv
 python-multipart
 pdfplumber
-pypdf
 python-docx
-pillow
-numpy
-easyocr==1.7.1
 google-generativeai
-razorpay
 pydantic
+razorpay
+pymupdf
+pillow
+pypdf
+numpy
+requests
